@@ -1,0 +1,121 @@
+== Check 1: Docker works
+29.7.2
+== Check 2: pull images (this can take a while)
+12950-vul: Pulling from n132/arvo
+Digest: sha256:1d3797d93ec3381a842e1eebfeb9fbbd31419f1e2bbc7a7f38ceb60e59af7f5e
+Status: Image is up to date for n132/arvo:12950-vul
+docker.io/n132/arvo:12950-vul
+12950-fix: Pulling from n132/arvo
+c33c1a8ea8d6: Pulling fs layer
+e75841723d15: Pulling fs layer
+dc9f99092a36: Pulling fs layer
+0ef7567fe46e: Pulling fs layer
+50bdedd33d46: Pulling fs layer
+50e49f8bd741: Pulling fs layer
+01aea4695666: Pulling fs layer
+19b2e85fbd93: Pulling fs layer
+37974dd95415: Pulling fs layer
+4f4fb700ef54: Pulling fs layer
+4d907db8e776: Pulling fs layer
+ca20f6b4ad8d: Pulling fs layer
+616a4a472a6f: Pulling fs layer
+bd758a946918: Pulling fs layer
+21ca47740821: Pulling fs layer
+185261196274: Pulling fs layer
+4813a22f968b: Pulling fs layer
+a610063fc9ec: Pulling fs layer
+a253654c4ba2: Pulling fs layer
+73dd461d280a: Pulling fs layer
+4f4fb700ef54: Already exists
+73dd461d280a: Already exists
+73dd461d280a: Pull complete
+e75841723d15: Download complete
+50e49f8bd741: Download complete
+19b2e85fbd93: Download complete
+c33c1a8ea8d6: Download complete
+c33c1a8ea8d6: Pull complete
+50bdedd33d46: Download complete
+01aea4695666: Download complete
+ca20f6b4ad8d: Download complete
+37974dd95415: Download complete
+dc9f99092a36: Download complete
+dc9f99092a36: Pull complete
+4d907db8e776: Download complete
+bd758a946918: Download complete
+bd758a946918: Pull complete
+616a4a472a6f: Download complete
+185261196274: Download complete
+4813a22f968b: Download complete
+a610063fc9ec: Download complete
+21ca47740821: Download complete
+0ef7567fe46e: Download complete
+a253654c4ba2: Download complete
+ca20f6b4ad8d: Pull complete
+a253654c4ba2: Pull complete
+185261196274: Pull complete
+4813a22f968b: Pull complete
+a610063fc9ec: Pull complete
+37974dd95415: Pull complete
+21ca47740821: Pull complete
+e75841723d15: Pull complete
+50bdedd33d46: Pull complete
+0ef7567fe46e: Pull complete
+01aea4695666: Pull complete
+19b2e85fbd93: Pull complete
+4d907db8e776: Pull complete
+4f4fb700ef54: Pull complete
+616a4a472a6f: Pull complete
+50e49f8bd741: Pull complete
+Digest: sha256:96ba226bca3c4bfadd08f911a0f086ea82ed57e59988e10fb2fd8edbe6ad829d
+Status: Downloaded newer image for n132/arvo:12950-fix
+docker.io/n132/arvo:12950-fix
+== Check 3: PoC crashes the vulnerable build (expect an AddressSanitizer report)
+==7==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x6020000000b4 at pc 0x0000005d4fa2 bp 0x7fff99526700 sp 0x7fff995266f8
+SUMMARY: AddressSanitizer: heap-buffer-overflow /src/pcre2/src/pcre2_compile.c:2249:5 in read_name
+PASS: vulnerable build crashes
+== Check 4: PoC does NOT crash the fixed build
+PASS: fixed build is clean
+== Check 5: where the fuzz binary, PoC, and arvo script live
+--- /out:
+pcre2_fuzzer
+pcre2_fuzzer.dict
+pcre2_fuzzer.options
+--- arvo script:
+#!/bin/bash
+export ASAN_OPTIONS=alloc_dealloc_mismatch=0:allocator_may_return_null=1:allocator_release_to_os_interval_ms=500:check_malloc_usable_size=0:detect_container_overflow=1:detect_odr_violation=0:detect_leaks=0:detect_stack_use_after_return=1:fast_unwind_on_fatal=0:handle_abort=1:handle_segv=1:handle_sigill=1:max_uar_stack_size_log=16:print_scariness=1:quarantine_size_mb=10:strict_memcmp=1:strip_path_prefix=/workspace/:symbolize=1:use_sigaltstack=1:dedup_token_length=3
+export MSAN_OPTIONS=print_stats=1:strip_path_prefix=/workspace/:symbolize=1:dedup_token_length=3
+export UBSAN_OPTIONS=print_stacktrace=1:print_summary=1:silence_unsigned_overflow=1:strip_path_prefix=/workspace/:symbolize=1:dedup_token_length=3
+export FUZZER_ARGS="-rss_limit_mb=2560 -timeout=25"
+export AFL_FUZZER_ARGS="-m none"
+export FUZZING_ENGINE=libfuzzer
+export SANITIZER=address
+export ARCHITECTURE=x86_64
+export FUZZING_LANGUAGE=c++
+
+if [ "$#" -ge 1 ]; then
+# Get the first parameter
+first_param="$1"
+
+if [ "$first_param" = "compile" ]; then
+    compile
+elif [ "$first_param" = "run" ]; then
+    /out/pcre2_fuzzer /tmp/poc
+
+else
+    echo "Unknown command: $first_param"
+fi
+    else
+        /out/pcre2_fuzzer /tmp/poc
+
+fi
+    == Check 6: harness reports coverage (needed for the RL reward)
+using binary: /out/pcre2_fuzzer
+#2	INITED cov: 244 ft: 245 corp: 1/5b lim: 4 exec/s: 0 rss: 27Mb
+#2	DONE   cov: 244 ft: 245 corp: 1/5b lim: 4 exec/s: 0 rss: 27Mb
+PASS: coverage readout works
+== Check 7: python available inside the container (to run the agent in-container)
+/usr/bin/python3
+Python 3.5.2
+== Disk used by ARVO images
+12950-fix  3.12GB
+12950-vul  3.12GB
