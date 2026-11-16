@@ -1,0 +1,14 @@
+case 12950
+rule: regexes from /src/pcre2/testdata/testinput1, in file order (no seed corpus in the image)
+kept 10 (max 10, <= 8192 bytes, non-crashing); skipped 0 that crashed
+
+seed_00     19 bytes  from testinput1_line9
+seed_01     19 bytes  from testinput1_line16
+seed_02     35 bytes  from testinput1_line22
+seed_03     44 bytes  from testinput1_line25
+seed_04     13 bytes  from testinput1_line64
+seed_05     15 bytes  from testinput1_line72
+seed_06     13 bytes  from testinput1_line85
+seed_07     16 bytes  from testinput1_line98
+seed_08     14 bytes  from testinput1_line106
+seed_09     10 bytes  from testinput1_line109

@@ -1,0 +1,14 @@
+case 3522
+rule: OSS-Fuzz corpus /out/block_round_trip_seed_corpus.zip, spread by size
+kept 10 (max 10, <= 8192 bytes, non-crashing); skipped 0 that crashed
+
+seed_00      1 bytes  from 21606782c65e44cac7afbb90977d8b6f82140e76
+seed_01     15 bytes  from 71ef87783bd0593800c53c0f3615190c6267445b
+seed_02     19 bytes  from 73c3b934e59f47a8d3e879f58bf00aba21fd083d
+seed_03     28 bytes  from a081dcf21073864277ca9a5fa31ceef23d60b50a
+seed_04     50 bytes  from 60ab36f8d74987006351ffb5ca9bb82c15f9fba5
+seed_05     85 bytes  from 8545cd734882965c595a39f8ad1a5abbd685f300
+seed_06    201 bytes  from 703a36742134654aa61edc885ae1101a15c2122e
+seed_07    588 bytes  from 51a96e3870c2f96cf69ec847ceae593b3f62a217
+seed_08   1686 bytes  from e929140e58b41cbc6c41b07a658b1786e5bd5493
+seed_09   8192 bytes  from aaa5ff6693d56237d76366ad5fb1a005ea4407a8

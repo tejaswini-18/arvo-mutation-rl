@@ -1,0 +1,6 @@
+# Seeds are exact fuzzer inputs: never convert line endings (Windows checkouts
+# with core.autocrlf would otherwise rewrite the text seeds' bytes).
+seeds/** binary
+
+# Shell scripts run under bash inside Linux containers; CRLF breaks them.
+*.sh text eol=lf

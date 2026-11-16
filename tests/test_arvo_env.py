@@ -6,8 +6,9 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from arvo_env import (crash_signature, dedup_crashes, parse_output,  # noqa: E402
-                      parse_summary, size_bucket, state_index)
+from arvo_env import (crash_signature, dedup_crashes,  # noqa: E402
+                      parse_control_file, parse_output, parse_summary,
+                      size_bucket, state_index)
 
 CLEAN = """MERGE-OUTER: writing coverage summary for 1 files to sum
 MERGE-OUTER: 1 new files with 245 new features added
@@ -49,6 +50,13 @@ class TestParseOutput(unittest.TestCase):
         self.assertEqual(len(r["frames"]), 4)
         self.assertTrue(r["frames"][0].startswith("read_name "))
         self.assertNotIn("malloc", " ".join(r["frames"]))
+
+    def test_control_file_features(self):
+        new = "1\n0\n/in/x\nSTARTED 0 5\nFT 0 72 88 1360\nCOV 0 9 11 170\n"
+        mid = "1\n0\n/in/x\nSTARTED 0 5\nDONE 0 0 18 28\n"
+        self.assertEqual(parse_control_file(new), {"72", "88", "1360"})
+        self.assertEqual(parse_control_file(mid), {"0", "18", "28"})
+        self.assertEqual(parse_control_file("STARTED 0 5\n"), set())
 
     def test_garbage_is_not_a_crash(self):
         self.assertFalse(parse_output("garbage")["crashed"])

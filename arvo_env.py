@@ -6,6 +6,9 @@ mode so it writes out the input's exact feature set:
 
     <fuzz_binary> -merge=1 -save_coverage_summary=<file> <empty dir> <dir with the input>
 
+(newer libFuzzer builds use -merge_control_file=<file> instead; see
+_detect_coverage_mode).
+
 Coverage
 --------
 # NOTE: the PRD says "new coverage means the cumulative ft: rose since the
@@ -13,8 +16,12 @@ Coverage
 # counts only what that ONE input reached, not a running total; comparing it
 # to the best so far would reward inputs that are merely bigger, not inputs
 # that reach new code. `-print_pcs=1` prints nothing in this libFuzzer
-# version (checked on 12950). Merge mode's coverage summary lists the IDs of
-# the very features ft: counts, so we keep their union over the episode in
+# version (checked on 12950). Merge mode's coverage summary (or, in newer
+# builds, its control file) lists the IDs of the features ft: counts. For
+# the input "hello" the count equals -runs=0's ft: on 5 of the 6 cases; on
+# 10304 (libxml2) merge mode reports 508 vs ft: 455, consistently, so novelty
+# within a run is still measured on one fixed feature definition.
+# We keep their union over the episode in
 # Python. "New coverage features" = feature IDs never seen before in this
 # episode; the per-input ft is logged too. (Loading and saving the summary
 # in the same file is broken in this libFuzzer, hence the union in Python.)
@@ -95,6 +102,21 @@ def parse_summary(text):
     return features
 
 
+def parse_control_file(text):
+    """Feature IDs from a merge control file (newer libFuzzer).
+
+    Feature lines are 'FT <file index> f1 f2 ...' (newest builds) or
+    'DONE <file index> f1 f2 ...' (2019-era builds). 'COV' lines (edge PCs)
+    are ignored: features are what ft: counts.
+    """
+    features = set()
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] in ("FT", "DONE"):
+            features.update(parts[2:])
+    return features
+
+
 def parse_output(text):
     """Pull crash and stack info out of one libFuzzer run's output."""
     crashed = _ASAN_MARKER in text
@@ -147,20 +169,44 @@ class ArvoEnv(object):
         self.env["TMPDIR"] = self.scratch
         self.verify_input_path = os.path.join(self.scratch, "verify_input")
         self.fix_binary = self._install_fix_binary()
+        self.coverage_mode = self._detect_coverage_mode()
+
+    def _detect_coverage_mode(self):
+        """Which file libFuzzer can write the input's feature list to.
+
+        # NOTE: the six ARVO builds span three libFuzzer versions. Older ones
+        # only have -save_coverage_summary, the newest only have
+        # -merge_control_file. Both list the same features that ft: counts.
+        """
+        proc = subprocess.run([self.binary, "-help=1"], stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, env=self.env, timeout=60)
+        flags = proc.stdout.decode("utf-8", "replace")
+        if re.search(r"^\s*save_coverage_summary\b", flags, re.M):
+            return "summary"
+        if re.search(r"^\s*merge_control_file\b", flags, re.M):
+            return "control"
+        return None   # no per-input features: crash-only reward
 
     def _install_fix_binary(self):
-        """Copy the -fix binary into scratch (bind mounts may drop the exec bit)."""
-        rel = self.case.get("fix_binary")
+        """Copy the -fix /out folder into scratch and return its fuzz binary.
+
+        The whole folder is copied because some harnesses load files next to
+        themselves (file's magic_fuzzer reads magic.mgc); copying also restores
+        the exec bit, which the Windows bind mount may drop.
+        """
+        rel = self.case.get("fix_dir")
         if not rel:
             return None
-        src = os.path.join(os.path.dirname(os.path.abspath(__file__)), rel)
-        if not os.path.isfile(src):
-            print("WARNING: %s not found; run `bash extract_fix_binary.sh %s` "
+        src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), rel)
+        name = os.path.basename(self.binary)
+        if not os.path.isfile(os.path.join(src_dir, name)):
+            print("WARNING: %s/%s not found; run `bash extract_fix_binary.sh %s` "
                   "on the host. Crashes will be recorded as verified=None."
-                  % (src, self.case_id))
+                  % (src_dir, name, self.case_id))
             return None
-        dst = os.path.join(self.scratch, "fix_" + os.path.basename(src))
-        shutil.copyfile(src, dst)
+        dst_dir = os.path.join(self.scratch, "fix_out")
+        shutil.copytree(src_dir, dst_dir)
+        dst = os.path.join(dst_dir, name)
         os.chmod(dst, 0o755)
         return dst
 
@@ -260,9 +306,12 @@ class ArvoEnv(object):
         # -artifact_prefix stops libFuzzer dropping crash-<sha1> files into the
         # current directory (the project folder); we save crashes ourselves.
         cmd = [self.binary, "-merge=1",
-               "-artifact_prefix=" + self.scratch + "/",
-               "-save_coverage_summary=" + self.summary_path,
-               self.merge_out_dir, self.input_dir]
+               "-artifact_prefix=" + self.scratch + "/"]
+        if self.coverage_mode == "summary":
+            cmd.append("-save_coverage_summary=" + self.summary_path)
+        elif self.coverage_mode == "control":
+            cmd.append("-merge_control_file=" + self.summary_path)
+        cmd += [self.merge_out_dir, self.input_dir]
         start = time.time()
         try:
             proc = subprocess.run(cmd, stdout=subprocess.PIPE,
@@ -275,11 +324,16 @@ class ArvoEnv(object):
             # coverage" and record it.
             text, returncode = "", None
         result = parse_output(text)
-        # NOTE: a crashing input writes no summary, so its coverage is empty.
+        # NOTE: a crashing input has no (complete) feature line, so its
+        # coverage counts as empty.
         result["features"] = set()
-        if os.path.exists(self.summary_path):
+        if self.coverage_mode and os.path.exists(self.summary_path):
             with open(self.summary_path) as f:
-                result["features"] = parse_summary(f.read())
+                text = f.read()
+            if self.coverage_mode == "summary":
+                result["features"] = parse_summary(text)
+            else:
+                result["features"] = parse_control_file(text)
         result["returncode"] = returncode
         result["timed_out"] = returncode is None
         result["seconds"] = time.time() - start

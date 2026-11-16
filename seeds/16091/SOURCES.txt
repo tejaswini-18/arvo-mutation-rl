@@ -1,0 +1,14 @@
+case 16091
+rule: OSS-Fuzz corpus /out/spng_read_fuzzer_seed_corpus.zip, spread by size, each prefixed with 2 harness option bytes 00 01
+kept 10 (max 10, <= 8192 bytes, non-crashing); skipped 0 that crashed
+
+seed_00     63 bytes  from src/libspng/tests/images/xdtn0g01.png
+seed_01    140 bytes  from src/libspng/tests/images/xc1n0g08.png
+seed_02    166 bytes  from src/libspng/tests/images/basn0g01.png
+seed_03    216 bytes  from src/libspng/tests/images/cs3n2c16.png
+seed_04    261 bytes  from src/libspng/tests/images/cs3n3p08.png
+seed_05    338 bytes  from src/libspng/tests/images/s37n3p04.png
+seed_06    385 bytes  from src/libspng/tests/images/g25n0g16.png
+seed_07    964 bytes  from src/libspng/tests/images/pp0n2c16.png
+seed_08   1622 bytes  from src/libspng/tests/images/ps1n2c16.png
+seed_09   4182 bytes  from src/libspng/tests/images/basi6a16.png

@@ -1,11 +1,13 @@
-"""Experiment runner (PRD sections 8-9, build step 6).
+"""Experiment runner (PRD sections 8-9, build steps 6-7).
 
-Loops cases x agents x settings x seeds, one episode per run, and appends one
-row per run to results/<out>/runs.csv (plus full details to runs.jsonl).
+Loops agents x settings x seeds for ONE case, one episode per run, and appends
+one row per run to results/<out>/runs.csv (plus full details to runs.jsonl).
 Runs INSIDE the -vul container for the case, from the project root:
 
     docker run --rm -v "$(pwd):/work" -w /work n132/arvo:12950-vul \
-        python3 run_experiment.py --case 12950 --setting B --seeds 0 1 2 3 4
+        python3 run_experiment.py --case 12950 --settings A B --seeds 0 1 2 3 4
+
+(run_all.sh loops this over the six cases, one container per case.)
 
 Re-running the same command skips runs already in runs.csv, so an
 interrupted experiment can be resumed. Python 3.5 compatible.
@@ -21,8 +23,10 @@ file does not already crash.
 # If a draw still crashes we redraw (up to MAX_PERTURB_TRIES) and record how
 # many tries it took.
 
-Setting A (from seeds) is not implemented yet: the ARVO images ship no seed
-corpus, so the seed set still has to be chosen (build step 7).
+Setting A (from seeds)
+----------------------
+Start from the seed set in seeds/<case>/seed_* (built by build_seeds.py; see
+seeds/<case>/SOURCES.txt for where each file came from).
 """
 
 import argparse
@@ -84,8 +88,21 @@ def setting_b_start(env, poc, seed):
                        % MAX_PERTURB_TRIES)
 
 
-def run_one(case_id, agent_name, setting, seed, T, crash_dir, start_input):
-    env = ArvoEnv(case_id, [start_input], rng_seed=seed, T=T,
+def load_seed_set(case_id):
+    """Setting A inputs: seeds/<case>/seed_*, in name order."""
+    d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seeds", case_id)
+    names = sorted(n for n in os.listdir(d) if n.startswith("seed_"))
+    if not names:
+        raise RuntimeError("no seeds in %s; run build_seeds.py --case %s" % (d, case_id))
+    seeds = []
+    for n in names:
+        with open(os.path.join(d, n), "rb") as f:
+            seeds.append(f.read())
+    return seeds
+
+
+def run_one(case_id, agent_name, setting, seed, T, crash_dir, start_inputs):
+    env = ArvoEnv(case_id, start_inputs, rng_seed=seed, T=T,
                   crash_dir=crash_dir)
     agent = make_agent(agent_name, T, seed)
     start = time.time()
@@ -112,7 +129,10 @@ def run_one(case_id, agent_name, setting, seed, T, crash_dir, start_input):
             "coverage_available": env.coverage_available,
             "seed_executions": env.seed_executions,
             "operator_counts": json.dumps(env.operator_counts),
-            "start_input_hex": binascii.hexlify(start_input).decode("ascii"),
+            # Setting B: the perturbed PoC; Setting A: "seeds/<case>" (N files).
+            "start_input_hex": (binascii.hexlify(start_inputs[0]).decode("ascii")
+                                if setting == "B" else
+                                "seeds/%s (%d files)" % (case_id, len(start_inputs))),
             "wall_seconds": round(time.time() - start, 1),
             "coverage_curve": json.dumps(env.coverage_curve),
         }
@@ -139,8 +159,8 @@ def load_done(csv_path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--case", default="12950")
-    ap.add_argument("--setting", default="B", choices=["B"])
+    ap.add_argument("--case", default="12950", choices=sorted(config.CASES))
+    ap.add_argument("--settings", nargs="+", default=["A", "B"], choices=["A", "B"])
     ap.add_argument("--agents", nargs="+", default=AGENTS, choices=AGENTS)
     ap.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2, 3, 4])
     ap.add_argument("--T", type=int, default=config.DEFAULT_T)
@@ -152,26 +172,33 @@ def main():
     csv_path = os.path.join(args.out, "runs.csv")
     jsonl_path = os.path.join(args.out, "runs.jsonl")
     crash_dir = os.path.join(args.out, "crashes")
+    csv.field_size_limit(sys.maxsize)          # coverage curves are long
     already = load_done(csv_path)
-    csv.field_size_limit(sys.maxsize)
 
     case = config.CASES[args.case]
     with open(case["poc_path"], "rb") as f:
         poc = f.read()
 
-    for seed in args.seeds:
-        # Same start input for every agent with this seed (fair comparison).
-        probe = ArvoEnv(args.case, [poc], rng_seed=seed, T=1)
-        try:
-            start_input, n_changed, tries = setting_b_start(probe, poc, seed)
-        finally:
-            probe.close()
-        print("seed %d: start input %r (%d byte(s) changed, %d tries)"
-              % (seed, start_input, n_changed, tries))
+    for setting, seed in [(s, k) for s in args.settings for k in args.seeds]:
+        # Same start input(s) for every agent with this seed (fair comparison).
+        if setting == "A":
+            start_inputs = load_seed_set(args.case)
+            n_changed = tries = ""
+            print("case %s setting A seed %d: %d seed files"
+                  % (args.case, seed, len(start_inputs)))
+        else:
+            probe = ArvoEnv(args.case, [poc], rng_seed=seed, T=1)
+            try:
+                start_input, n_changed, tries = setting_b_start(probe, poc, seed)
+            finally:
+                probe.close()
+            start_inputs = [start_input]
+            print("case %s setting B seed %d: perturbed PoC (%d of %d bytes changed, %d tries)"
+                  % (args.case, seed, n_changed, len(poc), tries))
         sys.stdout.flush()
 
         for agent_name in args.agents:
-            key = (args.case, agent_name, args.setting, str(seed), str(args.T))
+            key = (args.case, agent_name, setting, str(seed), str(args.T))
             if key in already:
                 print("  skip %s (already in %s)" % (agent_name, csv_path))
                 continue
@@ -179,9 +206,9 @@ def main():
             # the same seed and crash step cannot overwrite each other.
             run_crash_dir = os.path.join(
                 crash_dir, "%s_%s_%s_seed%d_T%d" % (args.case, agent_name,
-                                                   args.setting, seed, args.T))
-            row, extra = run_one(args.case, agent_name, args.setting, seed,
-                                 args.T, run_crash_dir, start_input)
+                                                   setting, seed, args.T))
+            row, extra = run_one(args.case, agent_name, setting, seed,
+                                 args.T, run_crash_dir, start_inputs)
             row["perturbed_bytes"] = n_changed
             row["perturb_tries"] = tries
 

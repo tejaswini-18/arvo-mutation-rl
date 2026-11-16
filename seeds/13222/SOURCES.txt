@@ -1,0 +1,14 @@
+case 13222
+rule: OSS-Fuzz corpus /out/magic_fuzzer_seed_corpus.zip, spread by size
+kept 10 (max 10, <= 8192 bytes, non-crashing); skipped 0 that crashed
+
+seed_00      5 bytes  from CVE-2014-1943.testfile
+seed_01     10 bytes  from zstd-v0.4-FF.testfile
+seed_02     10 bytes  from zstd-v0.7-21.testfile
+seed_03     10 bytes  from zstd-v0.8-01.testfile
+seed_04     10 bytes  from zstd-v0.8-16.testfile
+seed_05     10 bytes  from zstd-v0.8-22.testfile
+seed_06     10 bytes  from zstd-v0.8-FF.testfile
+seed_07    172 bytes  from json3.testfile
+seed_08   1280 bytes  from hddrawcopytool.testfile
+seed_09   4483 bytes  from issue359xlsx.testfile
