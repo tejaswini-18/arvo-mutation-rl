@@ -1,0 +1,242 @@
+"""ArvoEnv: wraps one ARVO fuzz target as an RL environment (PRD sections 5 and 7).
+
+Runs INSIDE the -vul container (Python 3.5.2), with the project mounted at
+/work. Each step runs the fuzz binary once on one input, in libFuzzer's merge
+mode so it writes out the input's exact feature set:
+
+    <fuzz_binary> -merge=1 -save_coverage_summary=<file> <empty dir> <dir with the input>
+
+Coverage
+--------
+# NOTE: the PRD says "new coverage means the cumulative ft: rose since the
+# last best", using `-runs=0`. Every execution is a fresh process, so ft:
+# counts only what that ONE input reached, not a running total; comparing it
+# to the best so far would reward inputs that are merely bigger, not inputs
+# that reach new code. `-print_pcs=1` prints nothing in this libFuzzer
+# version (checked on 12950). Merge mode's coverage summary lists the IDs of
+# the very features ft: counts, so we keep their union over the episode in
+# Python. "New coverage features" = feature IDs never seen before in this
+# episode; the per-input ft is logged too. (Loading and saving the summary
+# in the same file is broken in this libFuzzer, hence the union in Python.)
+# If a target writes no summary we fall back to the crash-only reward (PRD
+# section 7) and record coverage_available=False.
+
+Crashes are detected from "ERROR: AddressSanitizer" in the output. Checking
+them against the -fix build is _verify, PRD build step 4 (not done here).
+"""
+
+import os
+import random
+import re
+import shutil
+import subprocess
+import tempfile
+import time
+
+import config
+import mutators
+
+NONE_ACTION = 8                      # "no previous action yet"
+SIZE_SMALL, SIZE_MEDIUM, SIZE_LARGE = 0, 1, 2
+NUM_STATES = 9 * 2 * 3               # 54
+
+_FRAME_RE = re.compile(r"^\s*#(\d+) 0x[0-9a-fA-F]+ in (.+)$")
+_ASAN_MARKER = "ERROR: AddressSanitizer"
+
+
+def size_bucket(n):
+    if n < 64:
+        return SIZE_SMALL
+    if n <= 1024:
+        return SIZE_MEDIUM
+    return SIZE_LARGE
+
+
+def state_index(state):
+    """Map (previous_action, got_new_coverage, size_bucket) to 0..53."""
+    prev, new_cov, size = state
+    return (prev * 2 + new_cov) * 3 + size
+
+
+def parse_summary(text):
+    """Feature IDs from a coverage summary: lines like 'in/x size: 5 features:  0 18 28 ...'."""
+    features = set()
+    for line in text.splitlines():
+        if "features:" in line:
+            features.update(line.split("features:", 1)[1].split())
+    return features
+
+
+def parse_output(text):
+    """Pull crash and stack info out of one libFuzzer run's output."""
+    crashed = _ASAN_MARKER in text
+    frames = []
+    if crashed:
+        after = text[text.index(_ASAN_MARKER):]
+        for line in after.splitlines():
+            m = _FRAME_RE.match(line)
+            if m:
+                frames.append(m.group(2).strip())
+            elif frames:
+                break   # end of the first stack trace
+    return {"crashed": crashed, "frames": frames}
+
+
+class ArvoEnv(object):
+
+    def __init__(self, case_id, seeds, rng_seed=0, T=config.DEFAULT_T,
+                 crash_dir=None, use_coverage=True):
+        """
+        case_id:   key into config.CASES, e.g. "12950"
+        seeds:     list of bytes, the initial seed pool
+        rng_seed:  seeds the env's RNG (seed choice and mutations)
+        T:         execution budget per episode
+        crash_dir: where crashing inputs are saved (None = don't save)
+        """
+        if not seeds:
+            raise ValueError("need at least one seed")
+        self.case = config.CASES[case_id]
+        self.case_id = case_id
+        self.binary = self.case["fuzz_binary"]
+        self.initial_seeds = [bytes(s) for s in seeds]
+        self.rng_seed = rng_seed
+        self.T = T
+        self.crash_dir = crash_dir
+        self.use_coverage = use_coverage
+
+        self.env = dict(os.environ)
+        self.env["ASAN_OPTIONS"] = config.ASAN_OPTIONS
+        # Scratch dir in the container's own filesystem: much faster than the
+        # Windows bind mount at /work.
+        self.scratch = tempfile.mkdtemp(prefix="arvoenv_")
+        self.input_dir = os.path.join(self.scratch, "in")
+        self.merge_out_dir = os.path.join(self.scratch, "out")
+        os.makedirs(self.input_dir)
+        os.makedirs(self.merge_out_dir)
+        self.input_path = os.path.join(self.input_dir, "input")
+        self.summary_path = os.path.join(self.scratch, "summary")
+        # libFuzzer's merge writes its control file to $TMPDIR; keep it here.
+        self.env["TMPDIR"] = self.scratch
+
+    def close(self):
+        shutil.rmtree(self.scratch, ignore_errors=True)
+
+    # ------------------------------------------------------------------ RL API
+
+    def reset(self):
+        self.rng = random.Random(self.rng_seed)
+        self.pool = list(self.initial_seeds)
+        self.covered = set()
+        self.executions = 0
+        self.crashes = []
+        self.coverage_curve = []
+        self.operator_counts = [0] * mutators.NUM_ACTIONS
+        self.coverage_available = False
+
+        # NOTE: the seeds are run once to establish baseline coverage. These
+        # runs do not count toward the budget T; their number is in info.
+        self.seed_executions = 0
+        for seed in self.pool:
+            result = self._run_input(seed)
+            self.seed_executions += 1
+            self.covered |= result["features"]
+            if result["features"]:
+                self.coverage_available = True
+        if not self.use_coverage:
+            self.coverage_available = False
+
+        # NOTE: the PRD does not define the size bucket before the first step;
+        # we use the first seed's size.
+        return (NONE_ACTION, 0, size_bucket(len(self.pool[0])))
+
+    def step(self, action):
+        seed = self.rng.choice(self.pool)            # uniform for all agents
+        child = mutators.mutate(action, seed, self.rng, self.pool)
+        result = self._run_input(child)
+        self.executions += 1
+        self.operator_counts[action] += 1
+
+        new_features = len(result["features"] - self.covered)
+        self.covered |= result["features"]
+        got_new = 1 if new_features > 0 else 0
+        if got_new:
+            self.pool.append(child)
+        self.coverage_curve.append(len(self.covered))
+
+        crashed = 1 if result["crashed"] else 0
+        if self.coverage_available:
+            reward = min(new_features, 10) / 10.0 + 10 * crashed
+        else:
+            reward = 10.0 * crashed               # crash-only fallback
+
+        crash_path = None
+        if crashed:
+            crash_path = self._save_crash(child)
+            self.crashes.append({"exec": self.executions, "path": crash_path,
+                                 "frames": result["frames"][:3]})
+
+        next_state = (action, got_new, size_bucket(len(child)))
+        done = bool(crashed) or self.executions >= self.T
+        info = {
+            "executions": self.executions,
+            "new_features": new_features,
+            "total_coverage": len(self.covered),
+            "input_ft": len(result["features"]),
+            "crashed": bool(crashed),
+            "crash_path": crash_path,
+            "frames": result["frames"][:3],
+            "pool_size": len(self.pool),
+            "exec_seconds": result["seconds"],
+        }
+        return next_state, reward, done, info
+
+    # --------------------------------------------------------------- internals
+
+    def _run_input(self, data):
+        """Run the fuzz binary on one input; return parsed coverage and crash info."""
+        with open(self.input_path, "wb") as f:
+            f.write(data)
+        for name in os.listdir(self.merge_out_dir):
+            os.remove(os.path.join(self.merge_out_dir, name))
+        if os.path.exists(self.summary_path):
+            os.remove(self.summary_path)
+        # -artifact_prefix stops libFuzzer dropping crash-<sha1> files into the
+        # current directory (the project folder); we save crashes ourselves.
+        cmd = [self.binary, "-merge=1",
+               "-artifact_prefix=" + self.scratch + "/",
+               "-save_coverage_summary=" + self.summary_path,
+               self.merge_out_dir, self.input_dir]
+        start = time.time()
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, env=self.env,
+                                  timeout=config.EXEC_TIMEOUT)
+            text = proc.stdout.decode("utf-8", "replace")
+            returncode = proc.returncode
+        except subprocess.TimeoutExpired:
+            # NOTE: a hang is not an ASan crash; treat it as "no crash, no
+            # coverage" and record it.
+            text, returncode = "", None
+        result = parse_output(text)
+        # NOTE: a crashing input writes no summary, so its coverage is empty.
+        result["features"] = set()
+        if os.path.exists(self.summary_path):
+            with open(self.summary_path) as f:
+                result["features"] = parse_summary(f.read())
+        result["returncode"] = returncode
+        result["timed_out"] = returncode is None
+        result["seconds"] = time.time() - start
+        result["output"] = text
+        return result
+
+    def _save_crash(self, data):
+        if not self.crash_dir:
+            return None
+        if not os.path.isdir(self.crash_dir):
+            os.makedirs(self.crash_dir)
+        name = "crash_%s_seed%d_exec%d" % (self.case_id, self.rng_seed,
+                                           self.executions)
+        path = os.path.join(self.crash_dir, name)
+        with open(path, "wb") as f:
+            f.write(data)
+        return path
