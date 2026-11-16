@@ -12,6 +12,9 @@ CASES = {
         "fuzz_binary": "/out/pcre2_fuzzer",
         # The arvo script runs `/out/pcre2_fuzzer /tmp/poc`.
         "poc_path": "/tmp/poc",
+        # Fixed build, copied out by `bash extract_fix_binary.sh 12950`.
+        # Relative to the project root.
+        "fix_binary": "fix_builds/12950/pcre2_fuzzer",
     },
 }
 

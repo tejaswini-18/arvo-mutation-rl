@@ -21,8 +21,19 @@ Coverage
 # If a target writes no summary we fall back to the crash-only reward (PRD
 # section 7) and record coverage_available=False.
 
-Crashes are detected from "ERROR: AddressSanitizer" in the output. Checking
-them against the -fix build is _verify, PRD build step 4 (not done here).
+Crashes are detected from "ERROR: AddressSanitizer" in the output.
+
+Verification (_verify)
+----------------------
+A crash counts only if (1) it reproduces on the -vul binary and (2) the -fix
+binary runs the same input and exits 0 with no ASan report (PRD section 7).
+# NOTE: the -fix binary is copied out of the -fix image by
+# extract_fix_binary.sh and run inside this -vul container, instead of
+# starting a -fix container per crash (we cannot run docker from in here).
+# This is sound because both images have identical system libraries; the
+# script checks that for each case and re-runs the PoC on both binaries.
+# If the fix binary is missing, verified is recorded as None (unknown), never
+# as True.
 """
 
 import os
@@ -56,6 +67,23 @@ def state_index(state):
     """Map (previous_action, got_new_coverage, size_bucket) to 0..53."""
     prev, new_cov, size = state
     return (prev * 2 + new_cov) * 3 + size
+
+
+def crash_signature(frames):
+    """Two crashes are the same bug if their top three ASan frames match."""
+    return tuple(frames[:3])
+
+
+def dedup_crashes(crashes):
+    """Keep the first crash of each signature (crashes: dicts with 'frames')."""
+    seen = set()
+    kept = []
+    for c in crashes:
+        sig = crash_signature(c["frames"])
+        if sig not in seen:
+            seen.add(sig)
+            kept.append(c)
+    return kept
 
 
 def parse_summary(text):
@@ -117,6 +145,24 @@ class ArvoEnv(object):
         self.summary_path = os.path.join(self.scratch, "summary")
         # libFuzzer's merge writes its control file to $TMPDIR; keep it here.
         self.env["TMPDIR"] = self.scratch
+        self.verify_input_path = os.path.join(self.scratch, "verify_input")
+        self.fix_binary = self._install_fix_binary()
+
+    def _install_fix_binary(self):
+        """Copy the -fix binary into scratch (bind mounts may drop the exec bit)."""
+        rel = self.case.get("fix_binary")
+        if not rel:
+            return None
+        src = os.path.join(os.path.dirname(os.path.abspath(__file__)), rel)
+        if not os.path.isfile(src):
+            print("WARNING: %s not found; run `bash extract_fix_binary.sh %s` "
+                  "on the host. Crashes will be recorded as verified=None."
+                  % (src, self.case_id))
+            return None
+        dst = os.path.join(self.scratch, "fix_" + os.path.basename(src))
+        shutil.copyfile(src, dst)
+        os.chmod(dst, 0o755)
+        return dst
 
     def close(self):
         shutil.rmtree(self.scratch, ignore_errors=True)
@@ -170,12 +216,20 @@ class ArvoEnv(object):
             reward = 10.0 * crashed               # crash-only fallback
 
         crash_path = None
+        check = {"verified": None, "reproduces_on_vul": None,
+                 "fix_returncode": None}
         if crashed:
             crash_path = self._save_crash(child)
+            check = self._verify(child)
             self.crashes.append({"exec": self.executions, "path": crash_path,
-                                 "frames": result["frames"][:3]})
+                                 "frames": result["frames"][:3],
+                                 "verified": check["verified"],
+                                 "reproduces_on_vul": check["reproduces_on_vul"],
+                                 "fix_returncode": check["fix_returncode"]})
 
         next_state = (action, got_new, size_bucket(len(child)))
+        # NOTE: per the PRD the episode ends at the first crash, verified or
+        # not; an unverified first crash is recorded as such, not skipped.
         done = bool(crashed) or self.executions >= self.T
         info = {
             "executions": self.executions,
@@ -185,6 +239,9 @@ class ArvoEnv(object):
             "crashed": bool(crashed),
             "crash_path": crash_path,
             "frames": result["frames"][:3],
+            "verified": check["verified"],
+            "reproduces_on_vul": check["reproduces_on_vul"],
+            "fix_returncode": check["fix_returncode"],
             "pool_size": len(self.pool),
             "exec_seconds": result["seconds"],
         }
@@ -228,6 +285,38 @@ class ArvoEnv(object):
         result["seconds"] = time.time() - start
         result["output"] = text
         return result
+
+    def _run_plain(self, binary, data):
+        """Run a binary once on one input file, the way the arvo script does."""
+        with open(self.verify_input_path, "wb") as f:
+            f.write(data)
+        cmd = [binary, "-artifact_prefix=" + self.scratch + "/",
+               self.verify_input_path]
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, env=self.env,
+                                  timeout=config.EXEC_TIMEOUT)
+            text = proc.stdout.decode("utf-8", "replace")
+            returncode = proc.returncode
+        except subprocess.TimeoutExpired:
+            text, returncode = "", None
+        result = parse_output(text)
+        result["returncode"] = returncode
+        return result
+
+    def _verify(self, data):
+        """PRD section 7: keep a crash only if it reproduces on -vul and the
+        -fix build exits cleanly (exit code 0, no ASan report, no timeout)."""
+        vul = self._run_plain(self.binary, data)
+        out = {"reproduces_on_vul": vul["crashed"], "fix_returncode": None,
+               "verified": None}
+        if self.fix_binary is None:
+            return out                        # unknown, never claimed True
+        fix = self._run_plain(self.fix_binary, data)
+        out["fix_returncode"] = fix["returncode"]
+        fix_clean = fix["returncode"] == 0 and not fix["crashed"]
+        out["verified"] = bool(vul["crashed"] and fix_clean)
+        return out
 
     def _save_crash(self, data):
         if not self.crash_dir:

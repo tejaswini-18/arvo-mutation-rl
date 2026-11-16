@@ -6,7 +6,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from arvo_env import parse_output, parse_summary, size_bucket, state_index  # noqa: E402
+from arvo_env import (crash_signature, dedup_crashes, parse_output,  # noqa: E402
+                      parse_summary, size_bucket, state_index)
 
 CLEAN = """MERGE-OUTER: writing coverage summary for 1 files to sum
 MERGE-OUTER: 1 new files with 245 new features added
@@ -51,6 +52,20 @@ class TestParseOutput(unittest.TestCase):
 
     def test_garbage_is_not_a_crash(self):
         self.assertFalse(parse_output("garbage")["crashed"])
+
+
+class TestDedup(unittest.TestCase):
+
+    def test_signature_is_top_three_frames(self):
+        self.assertEqual(crash_signature(["a", "b", "c", "d"]), ("a", "b", "c"))
+
+    def test_dedup_keeps_first_of_each_group(self):
+        crashes = [
+            {"exec": 1, "frames": ["a", "b", "c", "x"]},
+            {"exec": 2, "frames": ["a", "b", "c", "y"]},   # same top 3 as exec 1
+            {"exec": 3, "frames": ["a", "b", "z"]},
+        ]
+        self.assertEqual([c["exec"] for c in dedup_crashes(crashes)], [1, 3])
 
 
 class TestState(unittest.TestCase):
