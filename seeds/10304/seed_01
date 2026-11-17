@@ -1,5 +1,1 @@
-<!DOCTYPE doc [
-<!ELEMENT doc ANY>
-]>
-<doc>This is a valid document !</doc>
-
+<doc xmlns:p="urn:x"><p:item id="1"/><!-- c --></doc>

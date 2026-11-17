@@ -237,12 +237,13 @@ class ArvoEnv(object):
         if not self.use_coverage:
             self.coverage_available = False
 
-        # NOTE: the PRD does not define the size bucket before the first step;
-        # we use the first seed's size.
-        return (NONE_ACTION, 0, size_bucket(len(self.pool[0])))
+        # Proposal Algorithm 1 / Eq. 1: the seed for step t is drawn BEFORE the
+        # agent chooses, and the state's size bucket z_t is that seed's size.
+        self.current_seed = self.rng.choice(self.pool)   # uniform for all agents
+        return (NONE_ACTION, 0, size_bucket(len(self.current_seed)))
 
     def step(self, action):
-        seed = self.rng.choice(self.pool)            # uniform for all agents
+        seed = self.current_seed
         child = mutators.mutate(action, seed, self.rng, self.pool)
         result = self._run_input(child)
         self.executions += 1
@@ -273,7 +274,10 @@ class ArvoEnv(object):
                                  "reproduces_on_vul": check["reproduces_on_vul"],
                                  "fix_returncode": check["fix_returncode"]})
 
-        next_state = (action, got_new, size_bucket(len(child)))
+        # Draw the seed for the NEXT step now (after the pool update, so a new
+        # child can be picked) so the next state carries its size bucket.
+        self.current_seed = self.rng.choice(self.pool)
+        next_state = (action, got_new, size_bucket(len(self.current_seed)))
         # NOTE: per the PRD the episode ends at the first crash, verified or
         # not; an unverified first crash is recorded as such, not skipped.
         done = bool(crashed) or self.executions >= self.T
