@@ -7,10 +7,12 @@ Runs INSIDE the -vul container for the case, from the project root:
     docker run --rm -v "$(pwd):/work" -w /work n132/arvo:12950-vul \
         python3 run_experiment.py --case 12950 --settings A B --seeds 0 1 2 3 4
 
-(run_all.sh loops this over the six cases, one container per case.)
+(run_all.sh loops this over the six cases, one container per case;
+run_parallel.sh runs one container per case x setting x agent at once,
+each with --tag so it writes its own runs.<tag>.csv.)
 
-Re-running the same command skips runs already in runs.csv, so an
-interrupted experiment can be resumed. Python 3.5 compatible.
+Re-running the same command skips runs already in any runs*.csv in --out,
+so an interrupted experiment can be resumed. Python 3.5 compatible.
 
 Setting B (perturbed PoC)
 -------------------------
@@ -148,10 +150,21 @@ def run_one(case_id, agent_name, setting, seed, T, crash_dir, start_inputs):
         env.close()
 
 
-def load_done(csv_path):
+def result_files(out_dir, ext):
+    """runs.<ext> plus every per-job runs.<tag>.<ext> in out_dir, sorted."""
+    if not os.path.isdir(out_dir):
+        return []
+    names = [n for n in os.listdir(out_dir)
+             if n == "runs." + ext or (n.startswith("runs.") and n.endswith("." + ext))]
+    return [os.path.join(out_dir, n) for n in sorted(names)]
+
+
+def load_done(out_dir):
+    """Keys of runs already recorded in ANY runs*.csv in out_dir, so a run
+    finished by a split job is not repeated by a whole-case job, or vice versa."""
     done = set()
-    if os.path.exists(csv_path):
-        with open(csv_path) as f:
+    for path in result_files(out_dir, "csv"):
+        with open(path) as f:
             for r in csv.DictReader(f):
                 done.add((r["case"], r["agent"], r["setting"], r["seed"], r["T"]))
     return done
@@ -165,15 +178,22 @@ def main():
     ap.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2, 3, 4])
     ap.add_argument("--T", type=int, default=config.DEFAULT_T)
     ap.add_argument("--out", default="results/experiment")
+    ap.add_argument("--tag", default="",
+                    help="write runs.<tag>.csv/.jsonl instead of runs.csv/.jsonl, "
+                         "so parallel jobs on one case never share a file")
     args = ap.parse_args()
 
-    if not os.path.isdir(args.out):
+    try:
         os.makedirs(args.out)
-    csv_path = os.path.join(args.out, "runs.csv")
-    jsonl_path = os.path.join(args.out, "runs.jsonl")
+    except OSError:
+        if not os.path.isdir(args.out):    # parallel jobs may race to create it
+            raise
+    stem = "runs.%s" % args.tag if args.tag else "runs"
+    csv_path = os.path.join(args.out, stem + ".csv")
+    jsonl_path = os.path.join(args.out, stem + ".jsonl")
     crash_dir = os.path.join(args.out, "crashes")
     csv.field_size_limit(sys.maxsize)          # coverage curves are long
-    already = load_done(csv_path)
+    already = load_done(args.out)
 
     case = config.CASES[args.case]
     with open(case["poc_path"], "rb") as f:

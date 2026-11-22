@@ -4,7 +4,8 @@ Runs on the HOST (needs numpy, scipy, matplotlib), not in the containers:
 
     python metrics.py --results results/full --out results/full/analysis
 
-Reads results/<...>/<case>/runs.csv and runs.jsonl and writes to --out:
+Reads results/<...>/<case>/runs.csv and runs.jsonl (and the per-job
+runs.<tag>.csv/.jsonl files from run_parallel.sh) and writes to --out:
   summary.csv        one row per case x setting x agent
   stats.csv          Q-learning vs each baseline: Mann-Whitney U + A12
   operator_usage.csv share of each operator per case x setting x agent
@@ -73,6 +74,31 @@ def a12(x, y):
     return (gt + 0.5 * eq) / float(len(x) * len(y))
 
 
+def holm_adjust(ps):
+    """Holm-Bonferroni adjusted p-values (family-wise error). None = untested."""
+    idx = sorted((i for i, p in enumerate(ps) if p is not None), key=lambda i: ps[i])
+    m = len(idx)
+    out = [None] * len(ps)
+    running = 0.0
+    for rank, i in enumerate(idx):
+        running = max(running, min(1.0, (m - rank) * ps[i]))
+        out[i] = running
+    return out
+
+
+def bh_adjust(ps):
+    """Benjamini-Hochberg adjusted p-values (false discovery rate). None = untested."""
+    idx = sorted((i for i, p in enumerate(ps) if p is not None), key=lambda i: ps[i])
+    m = len(idx)
+    out = [None] * len(ps)
+    running = 1.0
+    for rank in range(m - 1, -1, -1):
+        i = idx[rank]
+        running = min(running, ps[i] * m / (rank + 1))
+        out[i] = running
+    return out
+
+
 def a12_magnitude(a):
     d = abs(a - 0.5)
     if d != d:            # nan
@@ -108,25 +134,43 @@ def load_runs(results_dir):
     rows = []
     for case in CASE_ORDER:
         d = os.path.join(results_dir, case)
-        p = os.path.join(d, "runs.csv")
-        if not os.path.exists(p):
+        csv_paths = result_files(d, "csv")
+        if not csv_paths:
             continue
         extra = {}
-        jp = os.path.join(d, "runs.jsonl")
-        if os.path.exists(jp):
+        for jp in result_files(d, "jsonl"):
             with open(jp) as f:
                 for line in f:
                     j = json.loads(line)
                     extra[(j["agent"], j["setting"], str(j["seed"]), str(j["T"]))] = j
-        with open(p) as f:
-            for r in csv.DictReader(f):
-                r["T"] = int(r["T"])
-                r["curve"] = json.loads(r["coverage_curve"])
-                r["ops"] = json.loads(r["operator_counts"])
-                j = extra.get((r["agent"], r["setting"], r["seed"], str(r["T"])), {})
-                r["q_greedy_policy"] = j.get("q_greedy_policy")
-                rows.append(r)
+        seen = set()
+        for p in csv_paths:
+            with open(p) as f:
+                for r in csv.DictReader(f):
+                    key = (r["agent"], r["setting"], r["seed"], r["T"])
+                    if key in seen:
+                        # NOTE: the runners skip finished runs, so a duplicate
+                        # means two jobs ran the same run; keep the first copy.
+                        print("warning: duplicate run %s %s in %s; keeping the first"
+                              % (case, key, p), file=sys.stderr)
+                        continue
+                    seen.add(key)
+                    r["T"] = int(r["T"])
+                    r["curve"] = json.loads(r["coverage_curve"])
+                    r["ops"] = json.loads(r["operator_counts"])
+                    j = extra.get((r["agent"], r["setting"], r["seed"], str(r["T"])), {})
+                    r["q_greedy_policy"] = j.get("q_greedy_policy")
+                    rows.append(r)
     return rows
+
+
+def result_files(case_dir, ext):
+    """runs.<ext> plus per-job runs.<tag>.<ext> files (run_parallel.sh), sorted."""
+    if not os.path.isdir(case_dir):
+        return []
+    names = [n for n in os.listdir(case_dir)
+             if n == "runs." + ext or (n.startswith("runs.") and n.endswith("." + ext))]
+    return [os.path.join(case_dir, n) for n in sorted(names)]
 
 
 def group(rows, case, setting, agent):
@@ -201,7 +245,15 @@ def compare(rows):
                         "significant": (p != "" and p < ALPHA),
                         "A12_q_better": round(a, 3),
                         "effect": a12_magnitude(a), "note": note,
+                        "_p": None if p == "" else p,
                     })
+    # NOTE: the family for the corrections is every testable comparison in
+    # this report (all cases, settings, baselines and metrics together).
+    raw = [r.pop("_p") for r in out]
+    for r, h, b in zip(out, holm_adjust(raw), bh_adjust(raw)):
+        r["p_holm"] = "" if h is None else round(h, 4)
+        r["p_bh"] = "" if b is None else round(b, 4)
+        r["significant_bh"] = b is not None and b < ALPHA
     return out
 
 
@@ -301,8 +353,11 @@ def plot_coverage(rows, setting, path, case_meta):
         ax.set_ylabel("coverage features", fontsize=8, color="#5f5e5a")
     handles, labels = axes.flat[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper right", ncol=3, frameon=False, fontsize=9)
-    fig.suptitle("Coverage vs executions, Setting %s (mean of 5 seeds; band = min-max)"
-                 % setting, x=0.01, ha="left", fontsize=12, color="#1f1e1c")
+    seeds = sorted(set(len(group(rows, c, setting, a)) for c in CASE_ORDER
+                       for a in AGENTS) - {0})
+    seeds_txt = "/".join(str(n) for n in seeds) or "0"
+    fig.suptitle("Coverage vs executions, Setting %s (mean of %s seeds; band = min-max)"
+                 % (setting, seeds_txt), x=0.01, ha="left", fontsize=12, color="#1f1e1c")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(path, dpi=150, facecolor="#fcfcfb")
     plt.close(fig)
@@ -376,10 +431,15 @@ NOTES = """## Notes on the analysis
   (higher coverage, fewer executions). 0.5 = no difference; below 0.5 means
   the baseline did better. Effect: negligible < 0.06 <= small < 0.14 <=
   medium < 0.21 <= large (distance from 0.5).
-- **n = 5 per group**: the smallest two-sided Mann-Whitney p-value possible
-  with 5 vs 5 is about 0.008, so only near-complete separation is significant.
-  No correction for multiple comparisons is applied; with this many tests,
-  some p < 0.05 results are expected by chance.
+- **Group size and power**: the runs per group are stated under the test
+  table. With 5 vs 5 the smallest possible two-sided Mann-Whitney p-value is
+  about 0.008, so only near-complete separation is significant; with 10 vs 10
+  it is about 0.0002.
+- **Multiple comparisons**: "p < 0.05" is per test, uncorrected. With this
+  many tests some uncorrected hits are expected by chance, so stats.csv also
+  gives Benjamini-Hochberg (p_bh, controls the false discovery rate) and Holm
+  (p_holm, controls the chance of any false positive) adjusted p-values over
+  all testable comparisons in the report. Holm is the stricter of the two.
 - **Operator usage** pools mutation counts over both settings and all seeds,
   so longer runs weigh more. Per-setting shares are in operator_usage.csv.
 - **Greedy policy**: per Q-learning run, the argmax action of each state the
@@ -409,18 +469,28 @@ def write_report(path, summary, stats, usage, greedy, names, results_dir):
     out.append("## Q-learning vs baselines (two-sided Mann-Whitney U, alpha = 0.05)\n")
     st2 = [dict(r, p=r["p_value"] if r["p_value"] != "" else "-",
                 sig="**yes**" if r["significant"] else "no",
+                pbh=r["p_bh"] if r["p_bh"] != "" else "-",
+                sigbh="**yes**" if r["significant_bh"] else "no",
                 note=r["note"] or "") for r in stats]
     out.append(md_table(st2, ["case", "setting", "comparison", "metric", "p", "sig",
-                              "A12_q_better", "effect", "note"],
+                              "pbh", "sigbh", "A12_q_better", "effect", "note"],
                         ["case", "setting", "comparison", "metric", "p", "p < 0.05",
-                         "A12 (Q better)", "effect", "note"]))
+                         "p (BH)", "BH < 0.05", "A12 (Q better)", "effect", "note"]))
     sig = [r for r in stats if r["significant"]]
+    sig_bh = [r for r in stats if r["significant_bh"]]
+    sig_holm = [r for r in stats if r["p_holm"] != "" and r["p_holm"] < ALPHA]
     testable = [r for r in stats if r["p_value"] != ""]
     out.append("\n%d of %d testable comparisons have p < 0.05 (%d more had "
                "identical values, i.e. no crash in either group). By chance "
-               "alone about %.1f would be expected at alpha = %.2f.\n"
+               "alone about %.1f would be expected at alpha = %.2f. After "
+               "correcting for the %d tests, %d remain significant with "
+               "Benjamini-Hochberg (false discovery rate) and %d with Holm "
+               "(family-wise error); both adjusted p-values are in stats.csv.\n"
                % (len(sig), len(testable), len(stats) - len(testable),
-                  ALPHA * len(testable), ALPHA))
+                  ALPHA * len(testable), ALPHA, len(testable), len(sig_bh),
+                  len(sig_holm)))
+    ns = sorted(set(r["n_q"] for r in stats) | set(r["n_base"] for r in stats))
+    out.append("Runs per group: %s.\n" % ", ".join(str(n) for n in ns))
 
     out.append("## Operator usage, both settings pooled (% of mutations)\n")
     u2 = []

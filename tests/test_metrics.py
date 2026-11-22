@@ -47,5 +47,77 @@ class TestCensoring(unittest.TestCase):
             {"verified": "False", "first_crash_exec": ""}, T), 101)
 
 
+class TestCorrections(unittest.TestCase):
+
+    def test_holm_and_bh_match_hand_computation(self):
+        from metrics import bh_adjust, holm_adjust
+        ps = [0.01, None, 0.04, 0.03]
+        # Holm: sorted 0.01, 0.03, 0.04 -> 3*0.01, max(.03, 2*0.03), max(.06, 0.04)
+        h = holm_adjust(ps)
+        self.assertIsNone(h[1])
+        for got, want in zip([h[0], h[3], h[2]], [0.03, 0.06, 0.06]):
+            self.assertAlmostEqual(got, want)
+        # BH: 0.04*3/3=0.04, min(0.04, 0.03*3/2=0.045)=0.04, 0.01*3/1=0.03
+        b = bh_adjust(ps)
+        self.assertIsNone(b[1])
+        for got, want in zip([b[0], b[3], b[2]], [0.03, 0.04, 0.04]):
+            self.assertAlmostEqual(got, want)
+
+    def test_adjusted_never_below_raw_and_capped(self):
+        from metrics import bh_adjust, holm_adjust
+        ps = [0.5, 0.9, 0.001]
+        for adj in (holm_adjust(ps), bh_adjust(ps)):
+            for p, a in zip(ps, adj):
+                self.assertGreaterEqual(a, p)
+                self.assertLessEqual(a, 1.0)
+
+
+class TestSplitResultFiles(unittest.TestCase):
+    """Per-job runs.<tag>.csv files (run_parallel.sh) load like one runs.csv."""
+
+    def _write(self, d, name, rows):
+        import csv
+        fields = ["case", "agent", "setting", "seed", "T",
+                  "coverage_curve", "operator_counts"]
+        with open(os.path.join(d, name), "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fields)
+            w.writeheader()
+            for r in rows:
+                w.writerow(r)
+
+    def test_tagged_files_are_combined_and_duplicates_dropped(self):
+        import contextlib
+        import io
+        import shutil
+        import tempfile
+        from metrics import load_runs, result_files
+        root = tempfile.mkdtemp()
+        try:
+            d = os.path.join(root, "12950")
+            os.makedirs(d)
+            base = {"case": "12950", "T": "10", "coverage_curve": "[1, 2]",
+                    "operator_counts": "[0]"}
+            row = lambda agent, setting, seed: dict(base, agent=agent,
+                                                    setting=setting, seed=seed)
+            self._write(d, "runs.A_random.csv", [row("random", "A", "0")])
+            self._write(d, "runs.B_ucb1.csv", [row("ucb1", "B", "0"),
+                                               row("ucb1", "B", "1")])
+            # Same run as in runs.A_random.csv: must be loaded once only.
+            self._write(d, "runs.csv", [row("random", "A", "0")])
+            with open(os.path.join(d, "runs.A_random.jsonl"), "w") as f:
+                f.write("{}\n".replace("{}", '{"agent": "random", "setting": "A", '
+                                             '"seed": 0, "T": 10}'))
+            self.assertEqual([os.path.basename(p) for p in result_files(d, "csv")],
+                             ["runs.A_random.csv", "runs.B_ucb1.csv", "runs.csv"])
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                rows = load_runs(root)
+            keys = sorted((r["agent"], r["setting"], r["seed"]) for r in rows)
+            self.assertEqual(keys, [("random", "A", "0"), ("ucb1", "B", "0"),
+                                    ("ucb1", "B", "1")])
+            self.assertIn("duplicate", err.getvalue())
+        finally:
+            shutil.rmtree(root)
+
+
 if __name__ == "__main__":
     unittest.main()
