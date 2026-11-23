@@ -1,14 +1,7 @@
 case 10304
-rule: files in /src/libxml2/test/, spread by size (no seed corpus in the image)
-kept 10 (max 10, <= 8192 bytes, non-crashing); skipped 0 that crashed
+rule: three hand-made valid XML documents (no seed corpus in the image)
+kept 3 (max 10, <= 8192 bytes, non-crashing); skipped 0 that crashed
 
-seed_00     10 bytes  from /src/libxml2/test/utf8bom.xml
-seed_01     77 bytes  from /src/libxml2/test/dtd3
-seed_02    102 bytes  from /src/libxml2/test/intsubset.xml
-seed_03    139 bytes  from /src/libxml2/test/dtd7
-seed_04    169 bytes  from /src/libxml2/test/defattr2.xml
-seed_05    221 bytes  from /src/libxml2/test/comment5.xml
-seed_06    403 bytes  from /src/libxml2/test/dav4
-seed_07    576 bytes  from /src/libxml2/test/dav7
-seed_08   1179 bytes  from /src/libxml2/test/att6
-seed_09   8028 bytes  from /src/libxml2/test/bigentname.xml
+seed_00     51 bytes  from handmade_0
+seed_01     53 bytes  from handmade_1
+seed_02     40 bytes  from handmade_2

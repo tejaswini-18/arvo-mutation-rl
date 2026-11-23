@@ -8,8 +8,8 @@ Run INSIDE the case's -vul container, from the project root:
 Writes seeds/<case>/ (committed, so every run uses the same files).
 
 # NOTE: where an image ships an OSS-Fuzz seed corpus (/out/<harness>_seed_corpus.zip)
-# we use it; otherwise (12950 pcre2, 10304 libxml2) the project's own test
-# inputs from inside the image. Each case has a deterministic rule (SOURCES
+# we use it; otherwise (12950 pcre2, 10304 libxml2) three small hand-made valid
+# files, as in the proposal (P4). Each case has a deterministic rule (SOURCES
 # below) that lists candidates in a fixed order; we keep the first MAX_SEEDS
 # that are non-empty, at most MAX_SEED_BYTES, and do NOT crash the -vul build
 # (a seed that already crashes would make the experiment meaningless). For
@@ -21,9 +21,7 @@ Python 3.5 compatible.
 """
 
 import argparse
-import glob
 import os
-import re
 import shutil
 import zipfile
 
@@ -32,17 +30,6 @@ from arvo_env import ArvoEnv
 MAX_SEEDS = 10
 # 8 KiB so all five of yara's PE corpus files (2-7.5 KiB) are eligible.
 MAX_SEED_BYTES = 8192
-
-
-def pcre2_patterns():
-    """Individual regexes from pcre2's own testdata/testinput1, in file order."""
-    path = "/src/pcre2/testdata/testinput1"
-    pat = re.compile(r"^/(.+)/[a-zA-Z]*\s*$")
-    with open(path, "rb") as f:
-        for i, line in enumerate(f.read().decode("latin-1").splitlines()):
-            m = pat.match(line)
-            if m:
-                yield ("testinput1_line%d" % (i + 1), m.group(1).encode("latin-1"))
 
 
 def spread_order(items, k=MAX_SEEDS):
@@ -71,28 +58,38 @@ def corpus_zip(path):
     return gen
 
 
-def test_files(directory):
+def handmade(files):
+    """A fixed list of small, valid, hand-written inputs (proposal P4)."""
     def gen():
-        named = []
-        for p in glob.glob(os.path.join(directory, "*")):
-            if os.path.isfile(p) and os.path.getsize(p) <= MAX_SEED_BYTES:
-                with open(p, "rb") as f:
-                    named.append((p, f.read()))
-        for item in spread_order(_eligible_sorted(named)):
-            yield item
+        for i, data in enumerate(files):
+            yield ("handmade_%d" % i, data)
     return gen
+
+
+# Proposal P4: "the project's OSS-Fuzz seed corpus if one is shipped in the
+# image, otherwise three small hand-made valid files of the target's format."
+HANDMADE_PCRE2 = [
+    b"a+b",
+    b"(foo|bar)[0-9]{2,5}",
+    br"^(?<name>\w+)\s*$",
+]
+HANDMADE_LIBXML2 = [
+    b'<?xml version="1.0"?><root><a x="1">text</a></root>',
+    b'<doc xmlns:p="urn:x"><p:item id="1"/><!-- c --></doc>',
+    b'<!DOCTYPE r [<!ENTITY e "v">]><r>&e;</r>',
+]
 
 
 # case -> (human-readable rule, candidate generator)
 SOURCES = {
-    "12950": ("regexes from /src/pcre2/testdata/testinput1, in file order "
-              "(no seed corpus in the image)", pcre2_patterns),
+    "12950": ("three hand-made valid regexes (no seed corpus in the image)",
+              handmade(HANDMADE_PCRE2)),
     "13222": ("OSS-Fuzz corpus /out/magic_fuzzer_seed_corpus.zip, spread by size",
               corpus_zip("/out/magic_fuzzer_seed_corpus.zip")),
     "3848": ("OSS-Fuzz corpus /out/pe_fuzzer_seed_corpus.zip, spread by size",
              corpus_zip("/out/pe_fuzzer_seed_corpus.zip")),
-    "10304": ("files in /src/libxml2/test/, spread by size "
-              "(no seed corpus in the image)", test_files("/src/libxml2/test")),
+    "10304": ("three hand-made valid XML documents (no seed corpus in the image)",
+              handmade(HANDMADE_LIBXML2)),
     "3522": ("OSS-Fuzz corpus /out/block_round_trip_seed_corpus.zip, spread by size",
              corpus_zip("/out/block_round_trip_seed_corpus.zip")),
     "16091": ("OSS-Fuzz corpus /out/spng_read_fuzzer_seed_corpus.zip, spread by size, "

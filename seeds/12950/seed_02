@@ -1,1 +1,1 @@
-abcd\t\n\r\f\a\e\071\x3b\$\\\?caxyz
+^(?<name>\w+)\s*$
