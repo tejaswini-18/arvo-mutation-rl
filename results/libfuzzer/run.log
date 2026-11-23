@@ -1,0 +1,32 @@
+=== 2026-11-23 01:53:45  15 jobs  60 min each  out=results/libfuzzer
+start 3848_seeds_seed0  01:53:46
+start 3848_seeds_seed1  01:53:46
+start 3848_seeds_seed2  01:53:46
+start 10304_seeds_seed0  01:53:46
+start 10304_seeds_seed1  01:53:46
+start 10304_seeds_seed2  01:53:46
+start 3522_seeds_seed0  01:53:46
+start 3522_seeds_seed1  01:53:46
+start 3522_seeds_seed2  01:53:46
+start 16091_seeds_seed0  01:53:46
+start 16091_seeds_seed1  01:53:46
+start 16091_seeds_seed2  01:53:46
+start 10304_handmade_seed0  01:53:46
+start 10304_handmade_seed1  01:53:46
+start 10304_handmade_seed2  01:53:46
+done  3848_seeds_seed2: execs=1476987 (460.0/s) ft=1715 artifact=crash-380b2da6ec8e3f565a2213bffa70ecb78db5a454 verified=True 3211s
+done  3848_seeds_seed0: execs=1484676 (449.8/s) ft=1768 artifact=crash-e46a22486ebddc7bda9851b54649d73570b3b877 verified=True 3300s
+done  3848_seeds_seed1: execs=1679016 (466.2/s) ft=1942 artifact=None verified=False 3602s
+done  16091_seeds_seed0: execs=20116608 (5584.9/s) ft=1400 artifact=None verified=False 3602s
+done  16091_seeds_seed2: execs=34033287 (9447.9/s) ft=1487 artifact=None verified=False 3602s
+done  16091_seeds_seed1: execs=36623962 (10166.9/s) ft=1492 artifact=None verified=False 3602s
+done  10304_handmade_seed0: execs=19518597 (5417.5/s) ft=23009 artifact=None verified=False 3603s
+done  10304_handmade_seed1: execs=19685440 (5463.7/s) ft=22958 artifact=None verified=False 3603s
+done  10304_handmade_seed2: execs=19837427 (5505.8/s) ft=23935 artifact=None verified=False 3603s
+done  10304_seeds_seed0: execs=6679742 (1852.8/s) ft=23832 artifact=None verified=False 3605s
+done  10304_seeds_seed1: execs=9584967 (2658.4/s) ft=24112 artifact=None verified=False 3606s
+done  3522_seeds_seed2: execs=2227742 (617.8/s) ft=5498 artifact=None verified=False 3606s
+done  3522_seeds_seed0: execs=1987527 (551.2/s) ft=5474 artifact=None verified=False 3606s
+done  3522_seeds_seed1: execs=2237457 (620.4/s) ft=5508 artifact=None verified=False 3606s
+done  10304_seeds_seed2: execs=8927659 (2475.7/s) ft=25612 artifact=None verified=False 3606s
+=== all done 2026-11-23 02:53:54

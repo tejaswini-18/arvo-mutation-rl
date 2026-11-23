@@ -1,0 +1,20 @@
+case 16091 setting A seed 0: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=597   1422s
+case 16091 setting A seed 1: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=700   1422s
+case 16091 setting A seed 2: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=657   1237s
+case 16091 setting A seed 3: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=641   1212s
+case 16091 setting A seed 4: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=649   1183s
+case 16091 setting A seed 5: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=635   1143s
+case 16091 setting A seed 6: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=647   1164s
+case 16091 setting A seed 7: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=658   1131s
+case 16091 setting A seed 8: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=669   1114s
+case 16091 setting A seed 9: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=649   1049s

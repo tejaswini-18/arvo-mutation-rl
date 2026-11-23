@@ -1,0 +1,3 @@
+case,verified_crashes,distinct_by_top3_frames,top_frame
+12950,48,2,read_name /src/pcre2/src/pcre2_compile.c:2249:5
+13222,46,3,looks_ucs32 /src/file/src/encoding.c:486:11

@@ -1,0 +1,36 @@
+=== 2026-11-23 12:08:26  T=20000  seeds=[0 1 2 3 4 5 6 7 8 9]  jobs=4  out=results/big_v2
+start 10304 A_random  12:08:26
+start 10304 A_ucb1  12:08:26
+start 12950 A_random  12:08:26
+start 12950 A_ucb1  12:08:26
+=== 2026-11-23 12:08:28  T=20000  seeds=[0 1 2 3 4 5 6 7 8 9]  jobs=12  out=results/big_v2
+start 3848 A_qlearning  12:08:28
+start 3848 B_qlearning  12:08:28
+start 10304 A_qlearning  12:08:28
+start 10304 B_qlearning  12:08:28
+start 3522 A_qlearning  12:08:28
+start 3522 B_qlearning  12:08:28
+start 16091 A_qlearning  12:08:28
+start 16091 B_qlearning  12:08:28
+start 13222 A_qlearning  12:08:28
+start 13222 B_qlearning  12:08:28
+start 12950 A_qlearning  12:08:28
+start 12950 B_qlearning  12:08:28
+done  13222 B_qlearning  12:46:59
+done  12950 A_ucb1  12:53:52
+done  12950 A_qlearning  12:56:08
+done  12950 A_random  13:24:35
+done  12950 B_qlearning  13:56:40
+done  13222 A_qlearning  15:02:39
+done  16091 B_qlearning  15:23:39
+done  16091 A_qlearning  15:29:52
+done  10304 A_ucb1  16:06:04
+done  10304 A_random  16:06:06
+=== all done 2026-11-23 16:06:06
+done  10304 A_qlearning  16:06:50
+done  3522 A_qlearning  16:11:11
+done  10304 B_qlearning  16:12:02
+done  3522 B_qlearning  16:12:10
+done  3848 B_qlearning  16:51:09
+done  3848 A_qlearning  16:53:13
+=== all done 2026-11-23 16:53:14

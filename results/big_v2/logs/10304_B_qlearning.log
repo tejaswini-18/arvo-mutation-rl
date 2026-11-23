@@ -1,0 +1,20 @@
+case 10304 setting B seed 0: perturbed PoC (85 of 846 bytes changed, 1 tries)
+  qlearning execs=20000 crash_exec=      verified=False coverage=7565  1775s
+case 10304 setting B seed 1: perturbed PoC (85 of 846 bytes changed, 1 tries)
+  qlearning execs=20000 crash_exec=      verified=False coverage=8185  1699s
+case 10304 setting B seed 2: perturbed PoC (85 of 846 bytes changed, 1 tries)
+  qlearning execs=20000 crash_exec=      verified=False coverage=7742  1644s
+case 10304 setting B seed 3: perturbed PoC (85 of 846 bytes changed, 1 tries)
+  qlearning execs=20000 crash_exec=      verified=False coverage=8024  1530s
+case 10304 setting B seed 4: perturbed PoC (85 of 846 bytes changed, 1 tries)
+  qlearning execs=20000 crash_exec=      verified=False coverage=7997  1493s
+case 10304 setting B seed 5: perturbed PoC (85 of 846 bytes changed, 1 tries)
+  qlearning execs=20000 crash_exec=      verified=False coverage=7890  1450s
+case 10304 setting B seed 6: perturbed PoC (85 of 846 bytes changed, 1 tries)
+  qlearning execs=20000 crash_exec=      verified=False coverage=8279  1432s
+case 10304 setting B seed 7: perturbed PoC (85 of 846 bytes changed, 1 tries)
+  qlearning execs=20000 crash_exec=      verified=False coverage=7538  1346s
+case 10304 setting B seed 8: perturbed PoC (85 of 846 bytes changed, 1 tries)
+  qlearning execs=20000 crash_exec=      verified=False coverage=8259  1168s
+case 10304 setting B seed 9: perturbed PoC (85 of 846 bytes changed, 1 tries)
+  qlearning execs=20000 crash_exec=      verified=False coverage=7623  1052s

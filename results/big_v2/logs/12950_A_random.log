@@ -1,0 +1,20 @@
+case 12950 setting A seed 0: 3 seed files
+  random    execs=2329  crash_exec=2329  verified=True  coverage=4786  159s
+case 12950 setting A seed 1: 3 seed files
+  random    execs=83    crash_exec=83    verified=True  coverage=1772  7s
+case 12950 setting A seed 2: 3 seed files
+  random    execs=5287  crash_exec=5287  verified=True  coverage=6032  390s
+case 12950 setting A seed 3: 3 seed files
+  random    execs=8726  crash_exec=8726  verified=True  coverage=6905  645s
+case 12950 setting A seed 4: 3 seed files
+  random    execs=20000 crash_exec=      verified=False coverage=8946  1486s
+case 12950 setting A seed 5: 3 seed files
+  random    execs=4399  crash_exec=4399  verified=True  coverage=5821  297s
+case 12950 setting A seed 6: 3 seed files
+  random    execs=17894 crash_exec=17894 verified=True  coverage=9131  1148s
+case 12950 setting A seed 7: 3 seed files
+  random    execs=1098  crash_exec=1098  verified=True  coverage=3851  71s
+case 12950 setting A seed 8: 3 seed files
+  random    execs=3702  crash_exec=3702  verified=True  coverage=4902  241s
+case 12950 setting A seed 9: 3 seed files
+  random    execs=1798  crash_exec=1798  verified=True  coverage=4524  116s

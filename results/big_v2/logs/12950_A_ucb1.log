@@ -1,0 +1,20 @@
+case 12950 setting A seed 0: 3 seed files
+  ucb1      execs=2827  crash_exec=2827  verified=True  coverage=5003  196s
+case 12950 setting A seed 1: 3 seed files
+  ucb1      execs=19013 crash_exec=19013 verified=True  coverage=8871  1417s
+case 12950 setting A seed 2: 3 seed files
+  ucb1      execs=249   crash_exec=249   verified=True  coverage=3096  19s
+case 12950 setting A seed 3: 3 seed files
+  ucb1      execs=4654  crash_exec=4654  verified=True  coverage=5800  346s
+case 12950 setting A seed 4: 3 seed files
+  ucb1      execs=2770  crash_exec=2770  verified=True  coverage=5338  206s
+case 12950 setting A seed 5: 3 seed files
+  ucb1      execs=1073  crash_exec=1073  verified=True  coverage=3892  79s
+case 12950 setting A seed 6: 3 seed files
+  ucb1      execs=108   crash_exec=108   verified=True  coverage=2269  9s
+case 12950 setting A seed 7: 3 seed files
+  ucb1      execs=598   crash_exec=598   verified=True  coverage=3533  45s
+case 12950 setting A seed 8: 3 seed files
+  ucb1      execs=4013  crash_exec=4013  verified=True  coverage=5410  295s
+case 12950 setting A seed 9: 3 seed files
+  ucb1      execs=1434  crash_exec=1434  verified=True  coverage=4506  105s

@@ -1,0 +1,20 @@
+case 13222 setting A seed 0: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=2610  2028s
+case 13222 setting A seed 1: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=2689  1844s
+case 13222 setting A seed 2: 10 seed files
+  qlearning execs=1251  crash_exec=1251  verified=True  coverage=2119  106s
+case 13222 setting A seed 3: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=2598  1702s
+case 13222 setting A seed 4: 10 seed files
+  qlearning execs=1078  crash_exec=1078  verified=True  coverage=2037  89s
+case 13222 setting A seed 5: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=2800  1651s
+case 13222 setting A seed 6: 10 seed files
+  qlearning execs=5304  crash_exec=5304  verified=True  coverage=2459  441s
+case 13222 setting A seed 7: 10 seed files
+  qlearning execs=3985  crash_exec=3985  verified=True  coverage=2287  330s
+case 13222 setting A seed 8: 10 seed files
+  qlearning execs=20000 crash_exec=      verified=False coverage=2655  1622s
+case 13222 setting A seed 9: 10 seed files
+  qlearning execs=7632  crash_exec=7632  verified=True  coverage=2472  628s
